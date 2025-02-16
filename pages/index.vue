@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Welcome to the Full Stack App</h1>
+    <h1>Welcome to the Madagascam App</h1>
     <p>{{ message }}</p>
   </div>
 </template>
