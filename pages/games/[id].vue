@@ -21,22 +21,6 @@
         </div>
 
         <div class="game-actions">
-          <button
-              v-if="!isAnalysisStarted && !isAnalysisComplete"
-              @click="startAnalysis"
-              class="btn btn-primary"
-              :disabled="analysisLoading"
-          >
-            {{ analysisLoading ? 'Starting...' : 'Start Analysis' }}
-          </button>
-
-          <div v-if="isAnalysisStarted && !isAnalysisComplete" class="analysis-status">
-            <div class="progress-container">
-              <div class="progress-bar" :style="{width: `${analysisProgress}%`}"></div>
-              <span class="progress-text">Analysis in progress: {{ analysisProgress }}%</span>
-            </div>
-          </div>
-
           <NuxtLink to="/games" class="btn btn-secondary">
             Back to Games
           </NuxtLink>
@@ -64,6 +48,31 @@
 
       <div v-else-if="pgnContent && !isAnalysisComplete" class="info-message">
         <p>Start analysis to view interesting moves and patterns</p>
+        
+        <div v-if="isAnalysisStarted" class="analysis-status">
+          <div class="progress-container">
+            <div class="progress-bar" :style="{width: `${analysisProgress}%`}"></div>
+          </div>
+          <span class="progress-text">Analysis in progress: {{ analysisProgress }}%</span>
+        </div>
+        
+        <div v-else class="analysis-controls">
+          <button
+            @click="startAnalysis"
+            class="btn btn-primary"
+            :disabled="analysisLoading"
+          >
+            {{ analysisLoading ? 'Starting...' : 'Start Analysis' }}
+          </button>
+          
+          <div class="strategy-selector">
+            <select v-model="selectedStrategy">
+              <option value="analytics">Analytics</option>
+              <option value="project_ai">Native AI</option>
+              <option value="third_party_ai">Third Party AI</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div v-else class="error-message">
@@ -95,6 +104,7 @@ const isAnalysisComplete = ref(false)
 const analysisJobId = ref(null)
 const analysisLoading = ref(false)
 const analysisProgress = ref(0)
+const selectedStrategy = ref('analytics') // Default to analytics
 let pollingInterval = null
 
 const gameId = computed(() => route.params.id)
@@ -186,7 +196,7 @@ async function startAnalysis() {
   analysisLoading.value = true
 
   try {
-    const response = await $api.startAnalysis(gameId.value)
+    const response = await $api.startAnalysis(gameId.value, selectedStrategy.value)
     analysisJobId.value = response.id
     isAnalysisStarted.value = true
     startPolling()
@@ -437,5 +447,55 @@ async function fetchAnalysisResults() {
 .progress-text {
   font-size: 14px;
   color: #666;
+}
+
+.analysis-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  gap: 12px;
+}
+
+.analysis-status {
+  margin-top: 16px;
+  width: 100%;
+}
+
+.strategy-selector select {
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  background-color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.strategy-selector select:focus {
+  outline: none;
+  border-color: #4CAF50;
+}
+
+.progress-container {
+  height: 8px;
+  background-color: #f1f1f1;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: #4CAF50;
+  transition: width 0.5s ease;
+}
+
+.progress-text {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  display: block;
 }
 </style>

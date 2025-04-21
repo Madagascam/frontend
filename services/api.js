@@ -84,9 +84,16 @@ export default defineNuxtPlugin((nuxtApp) => {
         },
 
         // Analysis endpoints
-        startAnalysis(gameId) {
+        startAnalysis(gameId, strategyType = 'analytics') {
+
             return customFetch(`/api/games/${gameId}/analysis/`, {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    strategy_type: strategyType
+                })
             })
         },
 
