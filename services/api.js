@@ -63,10 +63,7 @@ export default defineNuxtPlugin((nuxtApp) => {
             return customFetch(`/api/games/${id}`)
         },
 
-        createGame(title, pgnFile) {
-            const formData = new FormData()
-            formData.append('title', title)
-            formData.append('pgn_file', pgnFile)
+        createGame(formData) {
 
             return customFetch('/api/games/', {
                 method: 'POST',

@@ -59,8 +59,28 @@
             >
           </div>
 
+          <div class="form-group">
+            <label for="video-links">Video Links (optional)</label>
+            <div class="video-links-input">
+              <input
+                id="video-links"
+                v-model="newVideoLink"
+                type="url"
+                class="form-control"
+                placeholder="Paste a video link and press Enter"
+                @keydown.enter.prevent="addVideoLink"
+              >
+            </div>
+            <div v-if="videoLinks.length > 0" class="video-links-tags">
+              <span v-for="(link, index) in videoLinks" :key="index" class="video-link-tag" :title="link">
+                {{ link.length > 70 ? link.substring(0, 70) + '...' : link }}
+                <button @click="removeVideoLink(index)" class="remove-tag-btn" title="Remove link">×</button>
+              </span>
+            </div>
+          </div>
+
           <div class="pgn-preview">
-            <h3>Selected File: {{ fileData.name }}</h3>
+            <h3>Selected File: {{ fileData ? fileData.name : '' }}</h3>
             <div class="pgn-content">
               <pre>{{ pgnPreview }}</pre>
             </div>
@@ -85,120 +105,175 @@
 </template>
 
 <script>
+import { ref, computed, reactive } from 'vue' // Removed onMounted as it wasn't used
 import { useAuthStore } from '~/store/auth'
 
 export default {
   setup() {
     const authStore = useAuthStore()
-    return {
-      authStore
-    }
-  },
-  data() {
-    return {
-      isDragging: false,
-      fileData: null,
-      pgnContent: '',
-      pgnPreview: '',
-      gameTitle: '',
-      uploading: false,
-      error: null
-    }
-  },
-  computed: {
-    isAuthenticated() {
-      return this.authStore.isAuthenticated
-    }
-  },
-  methods: {
-    onDrop(e) {
-      this.isDragging = false
+    const gameTitle = ref('')
+    const pgnPreview = ref('')
+    const uploading = ref(false)
+    const error = ref(null)
+    const isDragging = ref(false)
+    const newVideoLink = ref('')
+    const videoLinks = reactive([]) // Use reactive for array
+    const fileData = ref(null) // Moved from data()
+    const pgnContent = ref('') // Moved from data()
+
+    const isAuthenticated = computed(() => authStore.isAuthenticated)
+
+    const onDrop = (e) => {
+      isDragging.value = false
       const files = e.dataTransfer.files
       if (files.length) {
-        this.processFile(files[0])
+        processFile(files[0])
       }
-    },
-    onFileSelect(e) {
+    }
+
+    const onFileSelect = (e) => {
       const files = e.target.files
       if (files.length) {
-        this.processFile(files[0])
+        processFile(files[0])
       }
-    },
-    processFile(file) {
-      // Check if the file is a PGN file
-      if (!file.name.endsWith('.pgn')) {
-        this.error = 'Only PGN files are allowed'
-        return
-      }
+    }
 
-      this.fileData = file
-      this.error = null
-
-      // Read file content for preview
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        this.pgnContent = event.target.result
-        // Show first few lines as preview
-        const lines = this.pgnContent.split('\n').slice(0, 10)
-        this.pgnPreview = lines.join('\n') + (lines.length < 10 ? '' : '\n...')
-
-        // Try to extract title from PGN if not set
-        if (!this.gameTitle) {
-          this.extractTitleFromPgn()
-        }
-      }
-      reader.readAsText(file)
-    },
-    extractTitleFromPgn() {
+    const extractTitleFromPgn = () => {
       // Attempt to create a title from event and player names in PGN
       try {
-        const eventMatch = this.pgnContent.match(/\[Event "([^"]+)"/i)
-        const whiteMatch = this.pgnContent.match(/\[White "([^"]+)"/i)
-        const blackMatch = this.pgnContent.match(/\[Black "([^"]+)"/i)
+        const eventMatch = pgnContent.value.match(/\[Event "([^"]+)"\]/i)
+        const whiteMatch = pgnContent.value.match(/\[White "([^"]+)"\]/i)
+        const blackMatch = pgnContent.value.match(/\[Black "([^"]+)"\]/i)
 
         const event = eventMatch ? eventMatch[1] : ''
         const white = whiteMatch ? whiteMatch[1] : ''
         const black = blackMatch ? blackMatch[1] : ''
 
         if (event && white && black) {
-          this.gameTitle = `${event}: ${white} vs ${black}`
+          gameTitle.value = `${event}: ${white} vs ${black}`
         } else if (white && black) {
-          this.gameTitle = `${white} vs ${black}`
+          gameTitle.value = `${white} vs ${black}`
         }
       } catch (e) {
         console.error('Failed to extract title from PGN', e)
       }
-    },
-    clearFile() {
-      this.fileData = null
-      this.pgnContent = ''
-      this.pgnPreview = ''
-      this.gameTitle = ''
-      this.error = null
-    },
-    async uploadGame() {
-      if (!this.gameTitle.trim()) {
-        this.error = 'Please enter a title for the game'
+    }
+
+    const processFile = (file) => {
+      // Check if the file is a PGN file
+      if (!file.name.endsWith('.pgn')) {
+        error.value = 'Only PGN files are allowed'
         return
       }
 
-      this.uploading = true
-      this.error = null
+      fileData.value = file
+      error.value = null
+      gameTitle.value = '' // Reset title when new file is processed
+
+      // Read file content for preview
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        pgnContent.value = event.target.result
+        // Show first few lines as preview
+        const lines = pgnContent.value.split('\n').slice(0, 10)
+        pgnPreview.value = lines.join('\n') + (lines.length < 10 ? '' : '\n...')
+
+        // Try to extract title from PGN if not set by user
+        extractTitleFromPgn() // Call the method defined in setup
+      }
+      reader.readAsText(file)
+    }
+
+    const clearFile = () => {
+      fileData.value = null
+      pgnPreview.value = ''
+      gameTitle.value = ''
+      error.value = null
+      videoLinks.length = 0 // Clear video links using reactive array method
+      newVideoLink.value = ''
+      pgnContent.value = '' // Also clear pgnContent
+      // Reset file input if needed
+      // const fileInput = document.querySelector('input[type="file"]');
+      // if (fileInput) fileInput.value = '';
+    }
+
+    const addVideoLink = () => {
+      const link = newVideoLink.value.trim();
+      // Basic URL validation (can be improved)
+      if (link && (link.startsWith('http://') || link.startsWith('https://'))) {
+        if (!videoLinks.includes(link)) {
+            videoLinks.push(link);
+        }
+        newVideoLink.value = ''; // Clear input after adding
+      } else if (link) {
+        // Optional: Show an error if the link is invalid
+        console.warn('Invalid video link format');
+        error.value = 'Invalid video link format. Please use http:// or https://'
+        // You could set an error message here to display to the user
+      }
+    }
+
+    const removeVideoLink = (index) => {
+        videoLinks.splice(index, 1);
+    }
+
+    const uploadGame = async () => {
+      if (!fileData.value) return
+
+      uploading.value = true
+      error.value = null
 
       try {
-        const response = await this.$api.createGame(this.gameTitle, this.fileData)
+        const formData = new FormData()
+        formData.append('pgn_file', fileData.value)
+        formData.append('title', gameTitle.value || 'Untitled Game')
+        // Append each video link individually
+        videoLinks.forEach(link => formData.append('video_links', link))
+
+        // Assuming $api is globally available or injected
+        // If using Nuxt 3, use useNuxtApp().$api
+        const {$api} = useNuxtApp()
+        const response = await $api.createGame(formData)
         const gameId = response.id
 
         // Redirect to the game detail page
-        this.$router.push(`/games/${gameId}`)
-      } catch (error) {
-        console.error('Upload error:', error)
-        this.error = error.response?.data?.detail || 'Failed to upload game'
+        // Assuming $router is globally available or injected
+        // If using Nuxt 3, use useRouter()
+        const router = useRouter()
+        router.push(`/games/${gameId}`)
+      } catch (err) { // Changed variable name from error to err
+        console.error('Upload error:', err)
+        error.value = err.response?.data?.detail || 'Failed to upload game'
       } finally {
-        this.uploading = false
+        uploading.value = false
       }
     }
-  }
+
+    return {
+      authStore,
+      gameTitle,
+      pgnPreview,
+      uploading,
+      error,
+      isDragging,
+      newVideoLink,
+      videoLinks,
+      fileData,
+      pgnContent,
+      isAuthenticated,
+      onDrop,
+      onFileSelect,
+      processFile,
+      extractTitleFromPgn,
+      clearFile,
+      addVideoLink,
+      removeVideoLink,
+      uploadGame
+    }
+  },
+  // Removed data() function
+  // Removed computed property (moved to setup)
+  // Removed methods object (moved functions to setup)
 }
 </script>
 
@@ -400,5 +475,45 @@ label {
   padding: 16px;
   border-radius: 4px;
   margin-top: 24px;
+}
+
+.video-links-input {
+  margin-bottom: 10px;
+}
+
+.video-links-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.video-link-tag {
+  display: inline-flex;
+  align-items: center;
+  background-color: #e0e0e0;
+  color: #333;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 13px;
+  max-width: 100%; /* Ensure tag doesn't overflow container */
+  overflow: hidden; /* Hide overflow */
+  text-overflow: ellipsis; /* Add ellipsis for overflow */
+  white-space: nowrap; /* Prevent wrapping inside the tag */
+}
+
+.remove-tag-btn {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  margin-left: 6px;
+  padding: 0;
+}
+
+.remove-tag-btn:hover {
+  color: #000;
 }
 </style>
