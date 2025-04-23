@@ -95,10 +95,10 @@ export default defineNuxtPlugin((nuxtApp) => {
             })
         },
 
-        getAnalysisStatus(gameId) {
-            return customFetch(`/api/games/${gameId}/analysis/status`)
+        getTaskStatus(taskId) {
+            return customFetch(`/api/tasks/status/${taskId}`)
         },
-
+        
         getAnalysisResults(gameId) {
             return customFetch(`/api/games/${gameId}/analysis/result`)
         }

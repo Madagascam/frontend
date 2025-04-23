@@ -106,7 +106,8 @@ const loading = ref(true)
 const error = ref(null)
 const isAnalysisStarted = ref(false)
 const isAnalysisComplete = ref(false)
-const analysisJobId = ref(null)
+const analysisTaskId = ref(null)
+const videoTaskId = ref(null)
 const analysisLoading = ref(false)
 const analysisProgress = ref(0)
 const selectedStrategy = ref('analytics') // Default to analytics
@@ -202,45 +203,64 @@ async function startAnalysis() {
   analysisLoading.value = true
 
   try {
-    const response = await $api.startAnalysis(gameId.value, selectedStrategy.value, createVideo.value)
-    analysisJobId.value = response.id
-    isAnalysisStarted.value = true
-    startPolling()
+    const response = await $api.startAnalysis(gameId.value, selectedStrategy.value, createVideo.value);
+
+    // Store both task IDs returned from the API
+    analysisTaskId.value = response.analysis_id;
+    videoTaskId.value = response.video_id;
+    
+    isAnalysisStarted.value = true;
+    startPolling();
   } catch (err) {
-    console.error('Failed to start analysis:', err)
-    error.value = err.response?.data?.detail || 'Failed to start analysis'
+    console.error('Failed to start analysis:', err);
+    console.error('Error details:', err.message, err.stack);
+    error.value = err.response?.data?.detail || 'Failed to start analysis';
   } finally {
-    analysisLoading.value = false
+    analysisLoading.value = false;
   }
 }
 
 function startPolling() {
   pollingInterval = setInterval(async () => {
     try {
-      const response = await $api.getAnalysisStatus(gameId.value)
-      const status = response.status
+      // Only check analysis task status as that's what determines completion
+      if (analysisTaskId.value) {
+        // Make sure we're using taskId as a number if it's stored as a number
+        const taskId = typeof analysisTaskId.value === 'number' ? 
+          analysisTaskId.value : parseInt(analysisTaskId.value);
+          
+        const response = await $api.getTaskStatus(taskId);
+        const status = response.status;
 
-      // Calculate a progress percentage based on status
-      if (status === 'processing') {
-        // Increment progress (in real implementation this would come from API)
-        analysisProgress.value += 5
-        if (analysisProgress.value > 95) {
-          analysisProgress.value = 95
+        // Calculate a progress percentage based on status
+        if (status === 'processing') {
+          // Use progress from API if available, otherwise increment
+          if (response.progress !== undefined) {
+            analysisProgress.value = response.progress;
+          } else {
+            analysisProgress.value += 5;
+            if (analysisProgress.value > 95) {
+              analysisProgress.value = 95;
+            }
+          }
+        } else if (status === 'completed') {
+          analysisProgress.value = 100;
+          isAnalysisComplete.value = true;
+          stopPolling();
+          await fetchAnalysisResults();
+        } else if (status === 'failed') {
+          stopPolling();
+          error.value = 'Analysis failed';
         }
-      } else if (status === 'completed') {
-        analysisProgress.value = 100
-        isAnalysisComplete.value = true
-        stopPolling()
-        await fetchAnalysisResults()
-      } else if (status === 'failed') {
-        stopPolling()
-        error.value = 'Analysis failed'
+      } else {
+        console.warn('No analysisTaskId available for polling');
       }
     } catch (err) {
-      console.error('Failed to get analysis status:', err)
-      stopPolling()
+      console.error('Failed to get analysis status:', err);
+      console.error('Error details:', err.message, err.stack);
+      stopPolling();
     }
-  }, 3000)
+  }, 3000);
 }
 
 function stopPolling() {
