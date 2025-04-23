@@ -81,7 +81,7 @@ export default defineNuxtPlugin((nuxtApp) => {
         },
 
         // Analysis endpoints
-        startAnalysis(gameId, strategyType = 'analytics') {
+        startAnalysis(gameId, strategyType = 'analytics', createVideo = false) {
 
             return customFetch(`/api/games/${gameId}/analysis/`, {
                 method: 'POST',
@@ -89,7 +89,8 @@ export default defineNuxtPlugin((nuxtApp) => {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    strategy_type: strategyType
+                    strategy_type: strategyType,
+                    create_video: createVideo
                 })
             })
         },

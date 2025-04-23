@@ -72,6 +72,11 @@
               <option value="third_party_ai">Third Party AI</option>
             </select>
           </div>
+          
+          <div class="create-video-checkbox">
+            <input type="checkbox" id="createVideo" v-model="createVideo">
+            <label for="createVideo">Create Video</label>
+          </div>
         </div>
       </div>
 
@@ -105,6 +110,7 @@ const analysisJobId = ref(null)
 const analysisLoading = ref(false)
 const analysisProgress = ref(0)
 const selectedStrategy = ref('analytics') // Default to analytics
+const createVideo = ref(false) // State for the create video checkbox
 let pollingInterval = null
 
 const gameId = computed(() => route.params.id)
@@ -196,7 +202,7 @@ async function startAnalysis() {
   analysisLoading.value = true
 
   try {
-    const response = await $api.startAnalysis(gameId.value, selectedStrategy.value)
+    const response = await $api.startAnalysis(gameId.value, selectedStrategy.value, createVideo.value)
     analysisJobId.value = response.id
     isAnalysisStarted.value = true
     startPolling()
@@ -215,7 +221,7 @@ function startPolling() {
       const status = response.status
 
       // Calculate a progress percentage based on status
-      if (status === 'in_progress') {
+      if (status === 'processing') {
         // Increment progress (in real implementation this would come from API)
         analysisProgress.value += 5
         if (analysisProgress.value > 95) {
@@ -455,6 +461,23 @@ async function fetchAnalysisResults() {
   justify-content: center;
   margin-top: 16px;
   gap: 12px;
+  flex-wrap: wrap; /* Allow wrapping if needed */
+}
+
+.create-video-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #333;
+}
+
+.create-video-checkbox input {
+  cursor: pointer;
+}
+
+.create-video-checkbox label {
+  cursor: pointer;
 }
 
 .analysis-status {
