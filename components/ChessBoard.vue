@@ -1,7 +1,6 @@
 <!-- components/ChessBoard.vue -->
 <template>
   <div class="chess-board-container">
-    <h1>Chess Game Analysis</h1>
 
     <div class="main-content">
       <div class="board-column">
@@ -90,10 +89,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="actions">
-      <button @click="backToUpload" class="back-button">Upload New PGN</button>
     </div>
   </div>
 </template>
