@@ -200,7 +200,7 @@ export default {
     const addVideoLink = () => {
       const link = newVideoLink.value.trim();
       // Basic URL validation (can be improved)
-      if (link && (link.startsWith('http://') || link.startsWith('https://'))) {
+      if (link) {
         if (!videoLinks.includes(link)) {
             videoLinks.push(link);
         }

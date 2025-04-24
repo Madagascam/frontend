@@ -98,9 +98,22 @@ export default defineNuxtPlugin((nuxtApp) => {
         getTaskStatus(taskId) {
             return customFetch(`/api/tasks/status/${taskId}`)
         },
-        
+
         getAnalysisResults(gameId) {
             return customFetch(`/api/games/${gameId}/analysis/result`)
+        },
+
+        // Video Segment endpoints (New)
+        getVideoSegmentIds(gameId) {
+            // Fetches a list of video segment IDs (integers)
+            return customFetch(`/api/games/${gameId}/video-segments`)
+        },
+
+        getVideoSegment(gameId, segmentId) {
+            // Fetches a specific video segment (MP4)
+            // Note: $fetch might automatically handle the blob response for media types.
+            // If not, you might need to specify responseType: 'blob' in the options.
+            return customFetch(`/api/games/${gameId}/video-segments/${segmentId}`)
         }
     }
 
