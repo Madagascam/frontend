@@ -118,7 +118,7 @@ export default defineNuxtPlugin((nuxtApp) => {
             }
 
             // Use $fetch.raw to get the full response object (including headers)
-            const response = await $fetch.raw(`/api/games/${gameId}/video-segments/${segmentId}`, {
+            const response = await $fetch.raw(`/api/games/${gameId}/video-segments/${segmentId}/stream`, {
                 baseURL: API_URL,
                 headers,
                 responseType: 'blob' // Ensure the body is treated as a blob

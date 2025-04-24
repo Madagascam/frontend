@@ -30,7 +30,8 @@ const isVideoTaskPolling = ref(false)
 const isVideoTaskComplete = ref(false)
 const videoTaskProgress = ref(0)
 const videoSegmentIds = ref([])
-const videoSegments = ref([]) // Will store { id: segmentId, url: objectURL, type: blob.type }
+const videoHighlights = ref([]) // Stores the highlight data corresponding to segments
+const videoSegments = ref([]) // Will store { id: segmentId, url: objectURL, type: blob.type, description: string }
 const videoLoadingError = ref(null)
 const videoObjectUrls = ref([]) // To keep track of created URLs for cleanup
 
@@ -96,6 +97,32 @@ async function fetchGameDetails() {
     // Set analysis complete flag based on highlights
     isAnalysisComplete.value = highlights.value && highlights.value.length > 0;
 
+    // --- NEW: Check for existing video segments if analysis is complete --- 
+    if (isAnalysisComplete.value) {
+      try {
+        console.log('Analysis is complete, checking for existing video segments...');
+        // Attempt to fetch segment IDs to see if videos exist
+        const segmentResponse = await $api.getVideoSegmentIds(gameId.value);
+        if (segmentResponse && segmentResponse.video_segments && segmentResponse.video_segments.length > 0) {
+          console.log('Existing video segments found. Fetching them now.');
+          isVideoTaskComplete.value = true; // Mark video as complete since segments exist
+          await fetchVideoSegments(); // Fetch and display the videos
+        } else {
+          console.log('No existing video segments found for this game.');
+        }
+      } catch (videoErr) {
+        // Handle errors during the check (e.g., 404 if endpoint doesn't exist or no segments)
+        if (videoErr.response && videoErr.response.status === 404) {
+          console.log('No video segments available for this game (404).');
+        } else {
+          console.error('Error checking for existing video segments:', videoErr);
+          // Optionally set an error state, but don't block the page load
+          // videoLoadingError.value = 'Could not check for existing videos.';
+        }
+      }
+    }
+    // --- End NEW --- 
+
   } catch (err) {
     console.error('Failed to fetch game details:', err)
     error.value = err.response?.data?.detail || 'Failed to load game details'
@@ -150,6 +177,7 @@ async function startAnalysis() {
   videoTaskProgress.value = 0;
   videoSegments.value = [];
   videoSegmentIds.value = [];
+  videoHighlights.value = []; // Clear highlights
   videoLoadingError.value = null;
   videoObjectUrls.value.forEach(url => URL.revokeObjectURL(url)); // Clean up old URLs if any
   videoObjectUrls.value = [];
@@ -321,23 +349,33 @@ function stopVideoPolling() {
 async function fetchVideoSegments() {
     videoLoadingError.value = null;
     videoSegments.value = []; // Clear previous segments
+    videoHighlights.value = []; // Clear previous highlights
     videoObjectUrls.value.forEach(url => URL.revokeObjectURL(url)); // Clean up old URLs
     videoObjectUrls.value = [];
 
     try {
-        console.log(`Fetching segment IDs for game ${gameId.value}`);
-        const idsResponse = await $api.getVideoSegmentIds(gameId.value);
-        console.log(idsResponse)
-        videoSegmentIds.value = idsResponse;
-        console.log(`Found segment IDs: ${videoSegmentIds.value}`);
+        console.log(`Fetching segment IDs and highlights for game ${gameId.value}`);
+        // API now returns { video_segments: [...], highlights: [...] }
+        const response = await $api.getVideoSegmentIds(gameId.value);
+        console.log('Segment/Highlight Response:', response);
+
+        videoSegmentIds.value = response.video_segments || [];
+        videoHighlights.value = response.highlights || [];
+
+        console.log(`Found segment IDs: ${videoSegmentIds.value.length}, Highlights: ${videoHighlights.value.length}`);
 
         if (videoSegmentIds.value.length === 0) {
              console.warn('No video segments found after task completion.');
-             // No error message needed here, handled by template v-if/else
              return;
         }
 
-        const segmentPromises = videoSegmentIds.value.map(async (segmentId) => {
+        if (videoSegmentIds.value.length !== videoHighlights.value.length) {
+            console.warn('Mismatch between number of video segments and highlights. Descriptions might be incorrect.');
+            // Decide how to handle mismatch - proceed cautiously or show error?
+            // For now, proceed but log warning.
+        }
+
+        const segmentPromises = videoSegmentIds.value.map(async (segmentId, index) => { // Add index
             try {
                 console.log(`Fetching segment ${segmentId}`);
                 // $api.getVideoSegment now returns { blob, headers }
@@ -370,10 +408,16 @@ async function fetchVideoSegments() {
                 const objectURL = URL.createObjectURL(segmentBlob);
                 videoObjectUrls.value.push(objectURL); // Keep track for cleanup
                 console.log(`Created object URL for segment ${segmentId}: ${objectURL}`);
-                return { id: segmentId, url: objectURL, type: segmentBlob.type || 'video/mp4' }; // Store URL and type
+
+                // Find corresponding highlight using the index (assuming parallel lists)
+                const highlight = videoHighlights.value[index];
+                const description = highlight ? `${highlight.start_move} - ${highlight.end_move}` : 'Highlight info unavailable';
+
+                return { id: segmentId, url: objectURL, type: segmentBlob.type || 'video/mp4', description: description }; // Store URL, type, and description
             } catch (segErr) {
                 console.error(`Failed to fetch or process segment ${segmentId}:`, segErr);
-                return { id: segmentId, url: null, error: `Failed to load segment ${segmentId}` };
+                // Include description field even on error for consistency
+                return { id: segmentId, url: null, error: `Failed to load segment ${segmentId}`, description: 'Error loading segment' };
             }
         });
 
@@ -528,7 +572,8 @@ async function fetchVideoSegments() {
             <video controls :src="segment.url" :type="segment.type || 'video/mp4'">
               Your browser does not support the video tag. Segment {{ segment.id }}
             </video>
-            <p class="segment-moves">{{ segment.start_move }} - {{ segment.end_move }}</p>
+            <p class="video-description">{{ segment.description }}</p>
+            <p class="segment-id">Segment ID: {{ segment.id }}</p>
           </div>
         </div>
          <!-- Case 2: Video task finished, but no segments found (and no error during fetch) -->
@@ -687,7 +732,6 @@ async function fetchVideoSegments() {
   background-color: #f8f9fa;
   padding: 12px 20px;
   border-radius: 4px;
-  margin-bottom: 24px;
   font-size: 16px;
 }
 
