@@ -180,7 +180,7 @@ async function startAnalysis() {
   }
 }
 
-// --- Analysis Polling (Mostly Unchanged) ---
+// --- Analysis Polling ---
 function startPolling() {
   if (pollingInterval) return; // Prevent multiple intervals
   pollingInterval = setInterval(async () => {
@@ -340,16 +340,31 @@ async function fetchVideoSegments() {
         const segmentPromises = videoSegmentIds.value.map(async (segmentId) => {
             try {
                 console.log(`Fetching segment ${segmentId}`);
-                // Assuming $api.getVideoSegment returns a Blob
-                const segmentBlob = await $api.getVideoSegment(gameId.value, segmentId);
+                // $api.getVideoSegment now returns { blob, headers }
+
+                const segmentResponse = await $api.getVideoSegment(gameId.value, segmentId);
+                const segmentBlob = segmentResponse.blob;
+                const headers = segmentResponse.headers;
 
                 if (!(segmentBlob instanceof Blob)) {
-                   console.error(`Segment ${segmentId} response is not a Blob:`, segmentBlob);
+                   console.error(`Segment ${segmentId} response body is not a Blob:`, segmentBlob);
                    throw new Error(`Invalid data received for segment ${segmentId}`);
                 }
                 if (segmentBlob.size === 0) {
                     console.warn(`Segment ${segmentId} is an empty Blob.`);
-                    throw new Error(`Empty data received for segment ${segmentId}`);
+                    // Don't throw error here, maybe header is still useful or it's expected
+                    // return { id: segmentId, url: null, error: `Empty video data for segment ${segmentId}` };
+                }
+
+                let highlightData = null;
+                const highlightHeader = headers.get('x-highlight'); // Headers are case-insensitive
+                if (highlightHeader) {
+                    try {
+                        highlightData = JSON.parse(highlightHeader);
+                        console.log(`Parsed highlight data for segment ${segmentId}:`, highlightData);
+                    } catch (jsonErr) {
+                        console.error(`Failed to parse X-Highlight header for segment ${segmentId}:`, highlightHeader, jsonErr);
+                    }
                 }
 
                 const objectURL = URL.createObjectURL(segmentBlob);
@@ -386,20 +401,16 @@ async function fetchVideoSegments() {
 
 <template>
   <div class="game-detail-container">
-    <!-- Loading State -->
     <div v-if="loading" class="loading-container">
       <div class="loader"></div>
       <p>Loading game...</p>
     </div>
 
-    <!-- Critical Error (Game/PGN Load Failed) -->
-    <div v-else-if="error && !pgnContent" class="error-message">
+    <div v-else-if="error && !pgnContent" class="error-message"> <!-- Show critical error only if game/pgn load failed -->
       {{ error }}
     </div>
 
-    <!-- Main Content -->
-    <template v-else>
-      <!-- Game Header -->
+    <template v-else> <!-- Proceed if game loaded, even if analysis fails later -->
       <div class="game-header">
         <div class="game-title-section">
           <h1>{{ game?.title }}</h1>
@@ -408,6 +419,7 @@ async function fetchVideoSegments() {
             <span class="date-badge">{{ formatDate(game?.date) }}</span>
           </div>
         </div>
+
         <div class="game-actions">
           <NuxtLink to="/games" class="btn btn-secondary">
             Back to Games
@@ -415,7 +427,6 @@ async function fetchVideoSegments() {
         </div>
       </div>
 
-      <!-- Players Bar -->
       <div class="players-bar">
         <div class="player-info white">
           <span class="player-piece">♔</span>
@@ -428,26 +439,24 @@ async function fetchVideoSegments() {
         </div>
       </div>
 
-      <!-- Analysis/Video Error Message (if occurs after game load) -->
+      <!-- Display error related to analysis/video below board if it occurs -->
        <div v-if="error && pgnContent" class="error-message analysis-error">
          {{ error }}
        </div>
 
-      <!-- Chess Board Component (Always show if PGN is available) -->
+      <!-- Chess Board Component -->
       <ChessBoard
           v-if="pgnContent"
           :pgn-content="pgnContent"
           :interesting-moves="highlights"
       />
 
-      <!-- Section BEFORE Analysis is Complete -->
+      <!-- Analysis Status/Controls Section -->
       <div v-if="!isAnalysisComplete && pgnContent" class="analysis-section">
-        <!-- Prompt to Start Analysis -->
-        <div v-if="!isAnalysisStarted" class="info-message">
+        <div class="info-message">
           <p>Start analysis to view interesting moves and patterns</p>
         </div>
 
-        <!-- Analysis In Progress -->
         <div v-if="isAnalysisStarted" class="analysis-status">
           <div class="progress-container">
             <div class="progress-bar" :style="{width: `${analysisProgress}%`}"></div>
@@ -455,10 +464,7 @@ async function fetchVideoSegments() {
           <span class="progress-text">Analysis in progress: {{ analysisProgress }}%</span>
         </div>
 
-        <!-- Analysis Controls (Start Button, Strategy, Video Checkbox) -->
-        <!-- Show only if analysis hasn't started yet -->
-        <div v-if="!isAnalysisStarted" class="analysis-controls">
-          <!-- Ensure btn and btn-primary classes are applied -->
+        <div v-else class="analysis-controls">
           <button
             @click="startAnalysis"
             class="btn btn-primary"
@@ -483,54 +489,58 @@ async function fetchVideoSegments() {
         </div>
       </div>
 
-      <!-- Error if PGN Content is unavailable -->
        <div v-else-if="!pgnContent && !loading" class="error-message">
         <p>PGN content unavailable for analysis.</p>
       </div>
 
-      <!-- Section AFTER Analysis is Complete -->
-      <div v-if="isAnalysisComplete">
-        <!-- Analysis Complete Message (Show only if video wasn't requested or hasn't started polling yet) -->
-        <div v-if="!isVideoTaskPolling && !isVideoTaskComplete && !videoTaskId" class="info-message analysis-complete-message">
-          Analysis complete. Results are displayed on the board.
-        </div>
+      <!-- Analysis Complete Message (Optional) -->
+      <div v-if="isAnalysisComplete && !isVideoTaskPolling && !isVideoTaskComplete && !videoTaskId" class="info-message analysis-complete-message">
+        Analysis complete.
+      </div>
 
-        <!-- Video Generation Progress -->
-        <div v-if="videoTaskId && !isVideoTaskComplete" class="video-status section-box">
-          <h4>Video Generation</h4>
-          <div v-if="isVideoTaskPolling" class="analysis-status">
-            <div class="progress-container">
-              <div class="progress-bar video-progress-bar" :style="{width: `${videoTaskProgress}%`}"></div>
-            </div>
-            <span class="progress-text">Video generation in progress: {{ videoTaskProgress }}%</span>
-          </div>
-          <div v-if="videoLoadingError && !isVideoTaskComplete" class="error-message video-error">
-            {{ videoLoadingError }}
-          </div>
-          <div v-if="!isVideoTaskPolling && !videoLoadingError && !isVideoTaskComplete" class="info-message">
-              Video generation pending...
-          </div>
-        </div>
 
-        <!-- Video Segments Display -->
-        <div v-if="isVideoTaskComplete" class="video-segments-container section-box">
-          <h3>Video Highlights</h3>
-          <div v-if="videoSegments.length > 0" class="video-grid">
-            <div v-for="segment in videoSegments" :key="segment.id" class="video-item">
-              <video controls :src="segment.url" :type="segment.type || 'video/mp4'">
-                Your browser does not support the video tag. Segment {{ segment.id }}
-              </video>
-              <p class="segment-id">Highlight {{ segment.id }}</p>
-            </div>
+      <!-- NEW: Video Progress Section -->
+      <!-- Show this only AFTER analysis is complete AND video was requested AND video task is not yet complete -->
+      <div v-if="isAnalysisComplete && videoTaskId && !isVideoTaskComplete" class="video-status section-box">
+        <h4>Video Generation</h4>
+        <div v-if="isVideoTaskPolling" class="analysis-status">
+          <div class="progress-container">
+            <div class="progress-bar video-progress-bar" :style="{width: `${videoTaskProgress}%`}"></div>
           </div>
-          <div v-else-if="videoSegmentIds.length === 0 && !videoLoadingError" class="info-message">
-              Video generation complete, but no highlight segments were created for this game.
-          </div>
-          <div v-if="videoLoadingError" class="error-message video-error">
-            {{ videoLoadingError }}
-          </div>
+          <span class="progress-text">Video generation in progress: {{ videoTaskProgress }}%</span>
+        </div>
+         <!-- Show error specific to video polling/task -->
+        <div v-if="videoLoadingError && !isVideoTaskComplete" class="error-message video-error">
+          {{ videoLoadingError }}
+        </div>
+        <div v-if="!isVideoTaskPolling && !videoLoadingError && !isVideoTaskComplete" class="info-message">
+            Video generation pending...
         </div>
       </div>
+
+      <!-- NEW: Video Segments Display Section -->
+      <!-- Show this only AFTER video task is complete -->
+      <div v-if="isVideoTaskComplete" class="video-segments-container section-box">
+        <h3>Video Highlights</h3>
+         <!-- Case 1: Segments loaded successfully -->
+        <div v-if="videoSegments.length > 0" class="video-grid">
+          <div v-for="segment in videoSegments" :key="segment.id" class="video-item">
+            <video controls :src="segment.url" :type="segment.type || 'video/mp4'">
+              Your browser does not support the video tag. Segment {{ segment.id }}
+            </video>
+            <p class="segment-moves">{{ segment.start_move }} - {{ segment.end_move }}</p>
+          </div>
+        </div>
+         <!-- Case 2: Video task finished, but no segments found (and no error during fetch) -->
+         <div v-else-if="videoSegmentIds.length === 0 && !videoLoadingError" class="info-message">
+            Video generation complete, but no highlight segments were created for this game.
+         </div>
+         <!-- Case 3: Error occurred during segment fetching -->
+         <div v-if="videoLoadingError" class="error-message video-error">
+           {{ videoLoadingError }} <!-- Display errors during segment fetching -->
+         </div>
+      </div>
+
     </template>
   </div>
 </template>
@@ -637,18 +647,29 @@ async function fetchVideoSegments() {
   cursor: pointer;
   font-size: 14px;
 }
+.btn {
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+  border: none;
+}
 .btn-secondary {
   background-color: #6c757d;
   color: white;
   border: none;
 }
-.btn-secondary:hover {
-  background-color: #5a6268;
-}
 .btn-primary {
-  background-color: #007bff;
+  background-color: #4CAF50;
   color: white;
-  border: none;
+}
+
+.btn-primary:hover {
+  background-color: #45a049;
 }
 .btn-primary:hover {
     background-color: #0056b3;
@@ -688,7 +709,6 @@ async function fetchVideoSegments() {
 
 /* Analysis & Video Section Styling */
 .analysis-section, .video-status, .video-segments-container {
-    margin-top: 24px;
     padding: 16px;
     background-color: #fff;
     border: 1px solid #e0e0e0;

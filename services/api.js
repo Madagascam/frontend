@@ -109,11 +109,26 @@ export default defineNuxtPlugin((nuxtApp) => {
             return customFetch(`/api/games/${gameId}/video-segments`)
         },
 
-        getVideoSegment(gameId, segmentId) {
-            // Fetches a specific video segment (MP4)
-            // Note: $fetch might automatically handle the blob response for media types.
-            // If not, you might need to specify responseType: 'blob' in the options.
-            return customFetch(`/api/games/${gameId}/video-segments/${segmentId}`)
+        async getVideoSegment(gameId, segmentId) {
+            // Fetches a specific video segment (MP4) and its headers
+            const token = getAuthToken()
+            const headers = {}
+            if (token) {
+                headers.Authorization = `Bearer ${token}`
+            }
+
+            // Use $fetch.raw to get the full response object (including headers)
+            const response = await $fetch.raw(`/api/games/${gameId}/video-segments/${segmentId}`, {
+                baseURL: API_URL,
+                headers,
+                responseType: 'blob' // Ensure the body is treated as a blob
+            });
+
+            // Return an object containing both the blob and headers
+            return {
+                blob: response._data, // The actual blob data
+                headers: response.headers // The response headers object
+            };
         }
     }
 
